@@ -27,6 +27,7 @@ src/.env.backup
 src/.env.production
 src/.env.*
 !src/.env.example
+!src/.env.render.example
 src/vendor/
 src/node_modules/
 src/public/build
