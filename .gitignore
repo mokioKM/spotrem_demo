@@ -1,0 +1,42 @@
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# IDE / エディタ（リポジトリルート）
+.idea/
+.vscode/
+.fleet/
+.zed/
+.nova/
+*.swp
+*.swo
+
+# Docker: PostgreSQL データボリューム（ローカル DB。容量・機密のためコミットしない）
+docker/postgres/data/
+
+# ルート直下に置くローカル用環境ファイル（あれば）
+.env
+.env.local
+.env.*.local
+.env.example
+
+# Laravel アプリ（src）。Render 連携時の Root Directory 想定と一致させる
+src/.env
+src/.env.backup
+src/.env.production
+src/.env.*
+!src/.env.example
+src/vendor/
+src/node_modules/
+src/public/build
+src/public/hot
+src/public/storage
+src/storage/*.key
+src/storage/logs/*.log
+src/auth.json
+src/.phpunit.result.cache
+src/.phpunit.cache
+src/Homestead.json
+src/Homestead.yaml
+src/.phpactor.json

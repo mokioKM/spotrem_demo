@@ -1,0 +1,31 @@
+# プロジェクト概要
+- LINE公式アカウントを活用した不動産管理・トラブル報告システム「SpotRem」
+- 技術スタック: Laravel 11, jQuery, PostgreSQL(Render), Cloudinary, LINE Messaging API/LIFF
+
+# アーキテクチャ設計指針
+- **4層構造の徹底**: Controller -> Service -> Repository -> Model
+- **Interface駆動**: Repositoryは必ずInterfaceを経由し、ServiceにDIすること
+- **ストレージ戦略**: 全ての外部ファイル（画像・動画・PDF）は Cloudinary を利用する。Laravelの `Cloudinary` SDK または `cloudinary-laravel` パッケージを活用せよ。
+- **トランザクション**: 複数テーブルの更新（例：入金完了処理）を伴うServiceメソッド内では、必ず `DB::transaction` を使用すること。
+
+# AI駆動開発（TDD/ADID）ルール
+1. **スモールステップ**: 1つの機能（例：LIFF登録フォーム）を実装する際、まずInterfaceとDTOを定義し、ユーザーに確認を求めること。
+2. **テストコードの強制**: 新規機能の実装時、必ず `Pest`（またはPHPUnit）を用いたテストコードを同時に生成すること。特に外部API（LINE/Cloudinary/Google）はMockを利用したテストを記述せよ。
+3. **マイグレーション優先**: DB変更が必要な場合、まずMigrationファイルの内容を提案し、承認を得てからロジックを実装すること。
+
+# コーディング規約
+- **言語**: コードは英語。コメントは日本語で、ロジックの「なぜ」を詳しく記述する。
+- **型定義**: 全ての引数、戻り値に型宣言を行い、`declare(strict_types=1);` を全ファイルの先頭に付与すること。
+- **UI実装**: LIFFおよび管理画面は `Tailwind CSS` を基本とし、モバイルファーストで実装すること。
+- **例外処理**: ユーザー向けエラーメッセージとシステムログ（`Log::error`）を明確に分けること。
+
+# 特定ドメインの挙動
+- **LINE通知**: `Notification` クラスを作成し、通知種別（入居者向け/管理者向け）を管理すること。
+- **Cloudinary管理**: 
+    - 画像・動画は `resource_type: auto` でアップロードし、必要に応じてTransformations（リサイズ等）を適用する。
+    - 請求書PDFは `resource_type: raw` または `private` 指定での管理を検討し、セキュリティを担保すること。
+- **日付処理**: `Carbon` を使用し、日本のタイムゾーン（Asia/Tokyo）を基準に処理すること。
+
+# AIへの禁止事項
+- `app/Models` にビジネスロジックを直接記述することを禁止する（Service層に記述せよ）。
+- Google Cloud Storage (GCS) に関するコード生成は一切行わないこと。
