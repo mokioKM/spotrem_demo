@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * LINE Messaging API Webhook 受信（署名検証はミドルウェア）。
- * テキストメッセージは「チャット返信非対応」の定型文で reply する。
+ * テキストは「チャット返信非対応」の定型文、オプション請求の「入金完了」 postback は感謝文で reply する。
  */
 final class LineWebhookController extends Controller
 {

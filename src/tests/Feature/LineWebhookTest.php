@@ -83,4 +83,35 @@ class LineWebhookTest extends TestCase
         $response->assertOk();
         Http::assertNothingSent();
     }
+
+    public function test_replies_thank_you_on_option_invoice_payment_complete_postback(): void
+    {
+        Http::fake([
+            'https://api.line.me/v2/bot/message/reply' => Http::response([], 200),
+        ]);
+
+        $secret = (string) config('services.line.messaging_channel_secret');
+        $body = '{"events":[{"type":"postback","replyToken":"POSTBACK_REPLY","source":{"type":"user","userId":"U1"},"postback":{"data":"option_invoice_payment_complete"}}]}';
+        $sig = base64_encode(hash_hmac('sha256', $body, $secret, true));
+
+        $response = $this->call('POST', '/line/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json; charset=utf-8',
+            'HTTP_X_LINE_SIGNATURE' => $sig,
+        ], $body);
+
+        $response->assertOk();
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+            if ($request->url() !== 'https://api.line.me/v2/bot/message/reply') {
+                return false;
+            }
+            $data = $request->data();
+            if (($data['replyToken'] ?? null) !== 'POSTBACK_REPLY') {
+                return false;
+            }
+            $text = (string) (($data['messages'][0]['text'] ?? ''));
+
+            return str_contains($text, '入金ありがとうございました');
+        });
+    }
 }

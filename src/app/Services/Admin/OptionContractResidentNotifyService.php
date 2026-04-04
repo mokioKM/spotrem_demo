@@ -7,6 +7,7 @@ namespace App\Services\Admin;
 use App\Models\OptionBilling;
 use App\Models\OptionContract;
 use App\Services\Line\LineMessagingService;
+use App\Services\Line\OptionInvoiceLinePostback;
 use App\Services\Notification\NotificationLogWriter;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
@@ -65,9 +66,33 @@ final class OptionContractResidentNotifyService
             ."※白い画面のときは、右上の「⋯」などから「ブラウザで開く」をお試しください。\n\n"
             .'ご不明点は管理会社までお問い合わせください。';
 
+        $paymentPrompt = [
+            'type' => 'template',
+            'altText' => 'お支払いが完了した方は「入金完了」をタップしてください',
+            'template' => [
+                'type' => 'buttons',
+                'title' => '請求に関するお知らせ',
+                'text' => 'お支払い完了後、下のボタンをタップしてください。',
+                'actions' => [
+                    [
+                        'type' => 'postback',
+                        'label' => '入金完了',
+                        'data' => OptionInvoiceLinePostback::PAYMENT_COMPLETE,
+                    ],
+                ],
+            ],
+        ];
+
         $status = 'failed';
         try {
-            $ok = $this->lineMessaging->pushToUser($lineUid, [['type' => 'text', 'text' => $text]], 'option_invoice_demo');
+            $ok = $this->lineMessaging->pushToUser(
+                $lineUid,
+                [
+                    ['type' => 'text', 'text' => $text],
+                    $paymentPrompt,
+                ],
+                'option_invoice_demo',
+            );
             $status = $ok ? 'success' : 'failed';
         } catch (\Throwable $e) {
             Log::error('LINE push failed (option invoice demo)', ['message' => $e->getMessage()]);

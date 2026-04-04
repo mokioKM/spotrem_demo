@@ -10,6 +10,7 @@ use App\Models\OptionContract;
 use App\Models\Property;
 use App\Models\Resident;
 use App\Models\Role;
+use App\Services\Line\OptionInvoiceLinePostback;
 use App\Services\Media\CloudinaryOptionInvoiceUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -138,11 +139,17 @@ class OptionContractPdfTest extends TestCase
             }
             $decoded = json_decode($request->body(), true);
             $text = (string) (($decoded['messages'][0]['text'] ?? ''));
+            $msg1 = $decoded['messages'][1] ?? null;
+            $action = is_array($msg1)
+                ? (($msg1['template']['actions'][0] ?? [])['data'] ?? null)
+                : null;
 
             return is_array($decoded)
                 && ($decoded['to'] ?? null) === 'Uoptionresidenttest0000000000001'
                 && str_contains($text, 'option-invoices/'.$billing->id)
-                && str_contains($text, 'signature=');
+                && str_contains($text, 'signature=')
+                && ($msg1['type'] ?? null) === 'template'
+                && $action === OptionInvoiceLinePostback::PAYMENT_COMPLETE;
         });
     }
 
