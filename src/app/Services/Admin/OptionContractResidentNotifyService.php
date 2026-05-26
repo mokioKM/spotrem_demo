@@ -77,7 +77,7 @@ final class OptionContractResidentNotifyService
                     [
                         'type' => 'postback',
                         'label' => '入金完了',
-                        'data' => OptionInvoiceLinePostback::PAYMENT_COMPLETE,
+                        'data' => OptionInvoiceLinePostback::buildPaymentComplete((int) $billing->id),
                     ],
                 ],
             ],

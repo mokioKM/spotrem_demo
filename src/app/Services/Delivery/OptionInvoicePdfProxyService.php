@@ -12,15 +12,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
- * Cloudinary 上の請求書 PDF を自アプリ経由で配信する（LINE 内蔵ブラウザ等での表示用）
+ * Cloudinary 上の請求書 PDF を自アプリ経由で配信する
  *
- * Cloudinary raw は環境によって Content-Type が application/octet-stream になり、
- * LINE の WebView では白画面になることがある。そのため upstream から取得し直し、
- * application/pdf ＋ inline で返す。
+ * Cloudinary raw は Content-Type が application/octet-stream で返るため、
+ * 自サーバ経由で application/pdf を付けて配信する。
  */
 final class OptionInvoicePdfProxyService
 {
-    public function streamedPdfResponse(OptionBilling $billing): StreamedResponse
+    public function streamedPdfResponse(OptionBilling $billing, string $dispositionType = HeaderUtils::DISPOSITION_INLINE): StreamedResponse
     {
         $source = $billing->invoice_pdf_url;
         if (! is_string($source) || trim($source) === '') {
@@ -37,7 +36,7 @@ final class OptionInvoicePdfProxyService
             $asciiFallback = 'invoice.pdf';
         }
         $disposition = HeaderUtils::makeDisposition(
-            HeaderUtils::DISPOSITION_INLINE,
+            $dispositionType,
             $filename,
             $asciiFallback,
         );

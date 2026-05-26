@@ -8,14 +8,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AttachOptionBillingInvoiceRequest;
 use App\Models\OptionBilling;
 use App\Services\Admin\OptionBillingAdminService;
+use App\Services\Delivery\OptionInvoicePdfProxyService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\HeaderUtils;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class OptionBillingController extends Controller
 {
     public function __construct(
         private readonly OptionBillingAdminService $optionBillingAdminService,
     ) {}
+
+    public function showInvoicePdf(OptionBilling $optionBilling, OptionInvoicePdfProxyService $proxy): StreamedResponse
+    {
+        return $proxy->streamedPdfResponse($optionBilling, HeaderUtils::DISPOSITION_ATTACHMENT);
+    }
 
     public function attachInvoice(AttachOptionBillingInvoiceRequest $request, OptionBilling $optionBilling): RedirectResponse
     {

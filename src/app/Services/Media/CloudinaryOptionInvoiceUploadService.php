@@ -57,7 +57,7 @@ class CloudinaryOptionInvoiceUploadService
         $publicIdBasename = $this->buildRawPublicIdBasename($file);
 
         try {
-            $result = $cloudinary->uploadApi()->upload($path, [
+            $result = $cloudinary->uploadApi()->upload(fopen($path, 'rb'), [
                 'resource_type' => 'raw',
                 'folder' => $folder,
                 'public_id' => $publicIdBasename,

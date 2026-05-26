@@ -41,17 +41,20 @@ final class OptionBillingAdminService
 
     public function markPaidByAdmin(OptionBilling $billing, AdminUser $admin): void
     {
-        if ($billing->status === 'paid') {
-            throw new HttpException(400, __('既に入金済みです。'));
+        if ($billing->status === 'confirmed') {
+            throw new HttpException(400, __('既に入金確認済みです。'));
         }
 
         DB::transaction(function () use ($billing, $admin): void {
-            $billing->forceFill([
-                'status' => 'paid',
-                'paid_at' => now(),
+            $data = [
+                'status' => 'confirmed',
                 'confirmed_by' => $admin->id,
                 'confirmed_at' => now(),
-            ])->save();
+            ];
+            if ($billing->paid_at === null) {
+                $data['paid_at'] = now();
+            }
+            $billing->forceFill($data)->save();
         });
     }
 }

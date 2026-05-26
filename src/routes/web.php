@@ -68,6 +68,8 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::resource('option-contracts', OptionContractController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::post('option-contracts/{option_contract}/send-demo', [OptionContractController::class, 'sendDemo'])
             ->name('option-contracts.send-demo');
+        Route::get('option-billings/{optionBilling}/invoice-pdf', [OptionBillingController::class, 'showInvoicePdf'])
+            ->name('option-billings.invoice-pdf');
 
         Route::post('option-billings/{optionBilling}/invoice', [OptionBillingController::class, 'attachInvoice'])->name('option-billings.invoice');
         Route::post('option-billings/{optionBilling}/confirm-paid', [OptionBillingController::class, 'confirmPaid'])->name('option-billings.confirm-paid');

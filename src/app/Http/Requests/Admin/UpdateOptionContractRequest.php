@@ -35,7 +35,7 @@ final class UpdateOptionContractRequest extends FormRequest
                 Rule::exists('residents', 'id')->where('is_active', true),
             ],
             'name' => ['required', 'string', 'max:200'],
-            'amount' => ['required', 'numeric', 'min:0'],
+            'amount' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
             'due_date' => ['required', 'date'],
             'is_active' => ['boolean'],
             'invoice_pdf' => ['nullable', 'file', 'mimetypes:application/pdf', 'max:'.$maxKb],

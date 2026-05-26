@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Line;
 
+use App\Models\OptionBilling;
+use App\Models\Resident;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -13,7 +16,7 @@ final class LineWebhookInboundService
 {
     private const UNSUPPORTED_TEXT_REPLY = "このトークでのテキストメッセージへの返信には対応しておりません。\nお困りの際は、画面下のメニューから「トラブル報告」などをご利用ください。";
 
-    private const PAYMENT_THANK_YOU_REPLY = "入金ありがとうございました。\n確認いたしました。";
+    private const PAYMENT_THANK_YOU_REPLY = "入金のご連絡ありがとうございます。\n管理会社にて確認いたします。";
 
     public function __construct(
         private readonly LineMessagingService $lineMessaging,
@@ -84,7 +87,12 @@ final class LineWebhookInboundService
             return;
         }
         $data = $postback['data'] ?? null;
-        if ($data !== OptionInvoiceLinePostback::PAYMENT_COMPLETE) {
+        if (! is_string($data)) {
+            return;
+        }
+
+        $parsed = OptionInvoiceLinePostback::parsePaymentComplete($data);
+        if (! $parsed['match']) {
             return;
         }
 
@@ -97,6 +105,11 @@ final class LineWebhookInboundService
             return;
         }
 
+        $billingId = $parsed['billing_id'];
+        $lineUid = $event['source']['userId'] ?? null;
+
+        $this->markBillingPaidByResident($billingId, is_string($lineUid) ? $lineUid : null);
+
         $ok = $this->lineMessaging->reply(
             $replyToken,
             [['type' => 'text', 'text' => self::PAYMENT_THANK_YOU_REPLY]],
@@ -108,5 +121,56 @@ final class LineWebhookInboundService
                 'event' => 'webhook_postback_option_invoice_payment_complete',
             ]);
         }
+    }
+
+    private function markBillingPaidByResident(?int $billingId, ?string $lineUid): void
+    {
+        if ($billingId !== null) {
+            $billing = OptionBilling::find($billingId);
+            if ($billing !== null && $billing->status !== 'paid') {
+                DB::transaction(static function () use ($billing): void {
+                    $billing->forceFill([
+                        'status' => 'paid',
+                        'paid_at' => now(),
+                    ])->save();
+                });
+                Log::info('Option billing marked paid via LINE postback', ['billing_id' => $billingId]);
+            }
+
+            return;
+        }
+
+        if ($lineUid === null) {
+            Log::warning('Option invoice payment postback: no billing_id and no lineUid');
+
+            return;
+        }
+
+        $resident = Resident::where('line_uid', $lineUid)->first();
+        if ($resident === null) {
+            Log::warning('Option invoice payment postback: resident not found', ['line_uid' => $lineUid]);
+
+            return;
+        }
+
+        $billing = OptionBilling::query()
+            ->whereHas('optionContract', static fn ($q) => $q->where('resident_id', $resident->id))
+            ->where('status', 'pending')
+            ->orderByDesc('created_at')
+            ->first();
+
+        if ($billing === null) {
+            Log::info('Option invoice payment postback: no pending billing found', ['resident_id' => $resident->id]);
+
+            return;
+        }
+
+        DB::transaction(static function () use ($billing): void {
+            $billing->forceFill([
+                'status' => 'paid',
+                'paid_at' => now(),
+            ])->save();
+        });
+        Log::info('Option billing marked paid via LINE postback (fallback)', ['billing_id' => $billing->id]);
     }
 }

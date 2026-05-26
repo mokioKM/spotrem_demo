@@ -24,6 +24,7 @@
                     <th class="px-4 py-3">金額</th>
                     <th class="px-4 py-3">締め日</th>
                     <th class="px-4 py-3">状態</th>
+                    <th class="px-4 py-3">支払ステータス</th>
                     <th class="px-4 py-3 text-right">操作</th>
                 </tr>
             </thead>
@@ -31,6 +32,8 @@
                 @forelse ($contracts as $c)
                     @php
                         $hasPdf = $c->optionBillings->contains(static fn ($b) => is_string($b->invoice_pdf_url) && $b->invoice_pdf_url !== '');
+                        $latestBilling = $c->optionBillings->sortByDesc('created_at')->first();
+                        $billingStatus = $latestBilling?->status ?? null;
                     @endphp
                     <tr class="hover:bg-slate-50">
                         <td class="px-4 py-3">
@@ -49,6 +52,29 @@
                                 <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">無効</span>
                             @endif
                         </td>
+                        <td class="px-4 py-3">
+                            @if ($billingStatus === 'confirmed')
+                                <span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">確認済み</span>
+                            @elseif ($billingStatus === 'paid')
+                                <div class="flex items-center gap-2">
+                                    <span class="rounded-full bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">入金報告済</span>
+                                    <form method="post" action="{{ route('admin.option-billings.confirm-paid', $latestBilling) }}" class="inline" onsubmit="return confirm('口座への入金を確認しましたか？');">
+                                        @csrf
+                                        <button type="submit" class="rounded-md bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-700">入金確認</button>
+                                    </form>
+                                </div>
+                            @elseif ($billingStatus === 'pending')
+                                <div class="flex items-center gap-2">
+                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">未入金</span>
+                                    <form method="post" action="{{ route('admin.option-billings.confirm-paid', $latestBilling) }}" class="inline" onsubmit="return confirm('口座への入金を確認しましたか？');">
+                                        @csrf
+                                        <button type="submit" class="rounded-md bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-700">入金確認</button>
+                                    </form>
+                                </div>
+                            @else
+                                <span class="text-xs text-slate-400">—</span>
+                            @endif
+                        </td>
                         <td class="px-4 py-3 text-right">
                             <div class="flex flex-wrap items-center justify-end gap-2">
                                 <a href="{{ route('admin.option-contracts.edit', $c) }}" class="text-slate-700 underline hover:text-slate-900">編集</a>
@@ -63,7 +89,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="px-4 py-8 text-center text-slate-500">契約がありません。</td>
+                        <td colspan="7" class="px-4 py-8 text-center text-slate-500">契約がありません。</td>
                     </tr>
                 @endforelse
             </tbody>

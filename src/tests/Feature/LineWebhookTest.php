@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\OptionBilling;
+use App\Models\OptionContract;
+use App\Models\Property;
+use App\Models\Resident;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -11,6 +15,38 @@ use Tests\TestCase;
 class LineWebhookTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function createResidentWithBilling(string $lineUid = 'U_LINE_TEST_USER'): OptionBilling
+    {
+        $property = Property::create([
+            'name' => 'テスト物件',
+            'address' => '東京都テスト区1-1',
+            'region' => '関東',
+            'room_count' => 10,
+            'is_active' => true,
+        ]);
+        $resident = Resident::create([
+            'property_id' => $property->id,
+            'line_uid' => $lineUid,
+            'name' => 'テスト入居者',
+            'room_number' => '101',
+            'is_active' => true,
+        ]);
+        $contract = OptionContract::create([
+            'resident_id' => $resident->id,
+            'name' => 'テスト契約',
+            'amount' => 5000,
+            'due_date' => now()->addMonth(),
+            'is_active' => true,
+        ]);
+
+        return OptionBilling::create([
+            'option_contract_id' => $contract->id,
+            'billing_period' => now()->format('Y-m'),
+            'due_date' => now()->addMonth(),
+            'status' => 'pending',
+        ]);
+    }
 
     public function test_rejects_request_without_signature(): void
     {
@@ -111,7 +147,48 @@ class LineWebhookTest extends TestCase
             }
             $text = (string) (($data['messages'][0]['text'] ?? ''));
 
-            return str_contains($text, '入金ありがとうございました');
+            return str_contains($text, '入金のご連絡ありがとうございます');
+        });
+    }
+
+    public function test_payment_complete_postback_with_billing_id_updates_status(): void
+    {
+        Http::fake([
+            'https://api.line.me/v2/bot/message/reply' => Http::response([], 200),
+        ]);
+
+        $billing = $this->createResidentWithBilling();
+
+        $secret = (string) config('services.line.messaging_channel_secret');
+        $body = json_encode([
+            'events' => [[
+                'type' => 'postback',
+                'replyToken' => 'POSTBACK_REPLY_2',
+                'source' => ['type' => 'user', 'userId' => 'U_LINE_TEST_USER'],
+                'postback' => ['data' => "option_invoice_payment_complete:{$billing->id}"],
+            ]],
+        ]);
+        $sig = base64_encode(hash_hmac('sha256', $body, $secret, true));
+
+        $response = $this->call('POST', '/line/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json; charset=utf-8',
+            'HTTP_X_LINE_SIGNATURE' => $sig,
+        ], $body);
+
+        $response->assertOk();
+
+        $billing->refresh();
+        $this->assertSame('paid', $billing->status);
+        $this->assertNotNull($billing->paid_at);
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+            if ($request->url() !== 'https://api.line.me/v2/bot/message/reply') {
+                return false;
+            }
+            $data = $request->data();
+            $text = (string) (($data['messages'][0]['text'] ?? ''));
+
+            return str_contains($text, '入金のご連絡ありがとうございます');
         });
     }
 }

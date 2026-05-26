@@ -93,7 +93,10 @@
                         </td>
                         <td class="px-4 py-3">
                             @if ($b->invoice_pdf_url)
-                                <a href="{{ $b->invoice_pdf_url }}" target="_blank" rel="noopener noreferrer" class="text-slate-700 underline">PDF</a>
+                                <a href="{{ route('admin.option-billings.invoice-pdf', $b) }}" class="inline-flex items-center gap-1 text-slate-700 underline hover:text-slate-900">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3"/></svg>
+                                    PDF
+                                </a>
                                 @if ($b->invoice_pdf_filename)
                                     <div class="text-xs text-slate-500">{{ $b->invoice_pdf_filename }}</div>
                                 @endif
