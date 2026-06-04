@@ -9,6 +9,7 @@ use App\Models\Property;
 use App\Models\RequestAttachment;
 use App\Models\Resident;
 use App\Models\TroubleRequest;
+use App\Models\TroubleRequestPreferredSlot;
 use App\Models\Vendor;
 use App\Repositories\Contracts\ResidentRepositoryInterface;
 use App\Repositories\Contracts\VendorRepositoryInterface;
@@ -16,6 +17,7 @@ use App\Services\Calendar\GoogleCalendarAvailabilityService;
 use App\Services\Line\LineMessagingService;
 use App\Services\Media\CloudinaryTroubleAttachmentVerifier;
 use App\Services\Notification\NotificationLogWriter;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -35,7 +37,7 @@ final class TroubleSubmissionService
     ) {}
 
     /**
-     * @param  array{category_id: int, description: string, vendor_id?: int|null, preferred_date?: string|null, attachments?: list<array{cloudinary_public_id: string, file_type: string, url: string}>}  $payload
+     * @param  array{category_id: int, description: string, vendor_id?: int|null, preferred_slots?: list<array{priority: int, date: string, start_time: string, end_time: string}>, attachments?: list<array{cloudinary_public_id: string, file_type: string, url: string}>}  $payload
      */
     public function submit(string $lineUid, array $payload): TroubleRequest
     {
@@ -51,8 +53,11 @@ final class TroubleSubmissionService
         }
 
         $vendorId = $payload['vendor_id'] ?? null;
+        $preferredSlots = $payload['preferred_slots'] ?? [];
+
         if ($vendorId !== null) {
-            $this->assertVendorAllowedForRequest((int) $vendorId, (int) $payload['category_id'], $property);
+            $vendor = $this->assertVendorAllowedForRequest((int) $vendorId, (int) $payload['category_id'], $property);
+            $this->assertPreferredSlotsValidForVendor($vendor, $preferredSlots);
         }
 
         foreach ($payload['attachments'] ?? [] as $row) {
@@ -63,17 +68,29 @@ final class TroubleSubmissionService
             );
         }
 
-        $request = DB::transaction(function () use ($resident, $property, $payload): TroubleRequest {
+        $firstPreferredDate = $this->firstPreferredDate($preferredSlots);
+
+        $request = DB::transaction(function () use ($resident, $property, $payload, $preferredSlots, $firstPreferredDate): TroubleRequest {
             $tr = TroubleRequest::query()->create([
                 'resident_id' => $resident->id,
                 'property_id' => $property->id,
                 'category_id' => $payload['category_id'],
                 'vendor_id' => $payload['vendor_id'] ?? null,
                 'description' => $payload['description'],
-                'preferred_date' => $payload['preferred_date'] ?? null,
+                'preferred_date' => $firstPreferredDate,
                 'scheduled_at' => null,
                 'status' => 'pending',
             ]);
+
+            foreach ($preferredSlots as $slot) {
+                TroubleRequestPreferredSlot::query()->create([
+                    'trouble_request_id' => $tr->id,
+                    'priority' => $slot['priority'],
+                    'slot_date' => $slot['date'],
+                    'start_time' => $slot['start_time'],
+                    'end_time' => $slot['end_time'],
+                ]);
+            }
 
             foreach ($payload['attachments'] ?? [] as $row) {
                 RequestAttachment::query()->create([
@@ -84,7 +101,7 @@ final class TroubleSubmissionService
                 ]);
             }
 
-            return $tr->load(['category', 'vendor', 'resident', 'property']);
+            return $tr->load(['category', 'vendor', 'resident', 'property', 'preferredSlots']);
         });
 
         $this->sendNotifications($request, $resident, $property);
@@ -92,16 +109,58 @@ final class TroubleSubmissionService
         return $request;
     }
 
-    private function assertVendorAllowedForRequest(int $vendorId, int $categoryId, Property $property): void
+    private function assertVendorAllowedForRequest(int $vendorId, int $categoryId, Property $property): Vendor
     {
-        $allowedIds = $this->vendorRepository
-            ->findActiveMatchingCategoryAndRegion($categoryId, (string) $property->region)
-            ->pluck('id')
-            ->all();
+        $vendors = $this->vendorRepository->findActiveMatchingCategoryAndRegion($categoryId, (string) $property->region);
+        $vendor = $vendors->firstWhere('id', $vendorId);
 
-        if (! in_array($vendorId, $allowedIds, true)) {
+        if ($vendor === null) {
             throw new HttpException(422, __('選択した業者はこの地域・カテゴリでは利用できません。'));
         }
+
+        return $vendor;
+    }
+
+    /**
+     * @param  list<array{priority: int, date: string, start_time: string, end_time: string}>  $preferredSlots
+     */
+    private function assertPreferredSlotsValidForVendor(Vendor $vendor, array $preferredSlots): void
+    {
+        if ($preferredSlots === []) {
+            throw new HttpException(422, __('業者を指定する場合は第1希望の日時を選択してください。'));
+        }
+
+        $from = Carbon::today('Asia/Tokyo');
+        $to = $from->copy()->addDays(30);
+
+        foreach ($preferredSlots as $slot) {
+            $valid = $this->calendarAvailability->isThreeHourSlotAvailable(
+                $vendor->google_calendar_id,
+                $slot['date'],
+                $slot['start_time'],
+                $slot['end_time'],
+                $from,
+                $to,
+            );
+
+            if (! $valid) {
+                throw new HttpException(422, __('選択した希望日時は業者の空きと一致しません。画面を更新して再度お試しください。'));
+            }
+        }
+    }
+
+    /**
+     * @param  list<array{priority: int, date: string, start_time: string, end_time: string}>  $preferredSlots
+     */
+    private function firstPreferredDate(array $preferredSlots): ?string
+    {
+        foreach ($preferredSlots as $slot) {
+            if ($slot['priority'] === 1) {
+                return $slot['date'];
+            }
+        }
+
+        return null;
     }
 
     private function sendNotifications(TroubleRequest $request, Resident $resident, Property $property): void
@@ -196,7 +255,7 @@ final class TroubleSubmissionService
     {
         $categoryName = $request->category?->display_name ?? '—';
         $vendorName = $request->vendor?->name ?? '（未指定）';
-        $pref = $request->preferred_date?->format('Y-m-d') ?? '—';
+        $prefBlock = $this->formatPreferredSlotsBlock($request);
         $room = trim((string) $resident->room_number);
         $roomPart = $room !== '' ? "{$room}号室" : '—';
 
@@ -204,7 +263,7 @@ final class TroubleSubmissionService
             ."依頼ID：{$request->id}\n"
             ."物件：{$property->name} {$roomPart}\n"
             ."種類：{$categoryName}\n"
-            ."希望日：{$pref}\n"
+            .$prefBlock
             ."業者：{$vendorName}\n\n"
             .'管理画面から詳細を確認してください。';
     }
@@ -216,7 +275,7 @@ final class TroubleSubmissionService
         Vendor $vendor,
     ): string {
         $categoryName = $request->category?->display_name ?? '—';
-        $pref = $request->preferred_date?->format('Y-m-d') ?? '—';
+        $prefBlock = $this->formatPreferredSlotsBlock($request);
         $room = trim((string) $resident->room_number);
         $roomPart = $room !== '' ? "{$room}号室" : '—';
 
@@ -232,7 +291,7 @@ final class TroubleSubmissionService
             ."依頼ID：{$request->id}\n"
             ."物件：{$property->name} {$roomPart}\n"
             ."種類：{$categoryName}\n"
-            ."希望日：{$pref}\n"
+            .$prefBlock
             ."担当業者：{$vendor->name}\n"
             .$attachLine
             ."【詳細】\n{$detailBlock}\n\n"
@@ -245,7 +304,7 @@ final class TroubleSubmissionService
     private function buildResidentAcknowledgementText(TroubleRequest $request, Resident $resident, Property $property): string
     {
         $categoryLabel = $request->category?->display_name ?? '—';
-        $prefLabel = $request->preferred_date?->format('Y-m-d') ?? '指定なし';
+        $prefBlock = $this->formatPreferredSlotsBlock($request);
         $vendorLabel = $request->vendor?->name ?? '指定なし';
 
         $description = trim((string) $request->description);
@@ -264,11 +323,44 @@ final class TroubleSubmissionService
         return "送信ありがとうございます。以下の内容で受け付けました。\n\n"
             ."【物件】{$property->name} {$roomPart}\n"
             ."【種別】{$categoryLabel}\n"
-            ."【希望日】{$prefLabel}\n"
+            .$prefBlock
             ."【担当業者】{$vendorLabel}\n"
             .$attachmentLine
             ."【詳細（要約）】\n{$detailSummary}\n\n"
             .'管理会社・業者からの連絡をお待ちください。';
+    }
+
+    private function formatPreferredSlotsBlock(TroubleRequest $request): string
+    {
+        $slots = $request->relationLoaded('preferredSlots')
+            ? $request->preferredSlots
+            : $request->preferredSlots()->orderBy('priority')->get();
+
+        if ($slots->isEmpty()) {
+            return "【希望日時】\n指定なし\n";
+        }
+
+        $lines = ["【希望日時】"];
+        for ($priority = 1; $priority <= 3; $priority++) {
+            $slot = $slots->firstWhere('priority', $priority);
+            $label = $slot !== null
+                ? $this->formatSlotLine($slot->slot_date?->format('Y-m-d') ?? '', $slot->start_time, $slot->end_time)
+                : '—';
+            $lines[] = "第{$priority}希望: {$label}";
+        }
+
+        return implode("\n", $lines)."\n";
+    }
+
+    private function formatSlotLine(string $date, string $startTime, string $endTime): string
+    {
+        if ($date === '') {
+            return $startTime.'–'.$endTime;
+        }
+
+        $day = Carbon::parse($date, 'Asia/Tokyo')->locale('ja');
+
+        return $day->isoFormat('Y-MM-DD（ddd）').$startTime.'–'.$endTime;
     }
 
     /**

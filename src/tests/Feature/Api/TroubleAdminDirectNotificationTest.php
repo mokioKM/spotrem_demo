@@ -91,7 +91,6 @@ class TroubleAdminDirectNotificationTest extends TestCase
         $response = $this->postJson('/api/trouble-requests', [
             'category_id' => $category->id,
             'description' => 'エアコンが動かない',
-            'preferred_date' => now()->format('Y-m-d'),
         ], [
             'Authorization' => 'Bearer fake-id-token',
         ]);

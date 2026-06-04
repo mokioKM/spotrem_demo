@@ -11,16 +11,28 @@ use Google\Service\Calendar\Event;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Google Calendar API で「タイトルにキーワードを含むイベント」を空き枠として返す
+ * Google Calendar API で「タイトルにキーワードを含むイベント」を空き枠とし、3時間単位の選択肢に変換する
  *
  * サービスアカウント JSON のパスを .env で指定し、対象カレンダーを SA に共有する必要がある
  */
-final class GoogleCalendarAvailabilityService
+class GoogleCalendarAvailabilityService
 {
+    /** @var list<array{start: string, end: string}> */
+    private const THREE_HOUR_SLOT_DEFINITIONS = [
+        ['start' => '09:00', 'end' => '12:00'],
+        ['start' => '12:00', 'end' => '15:00'],
+        ['start' => '15:00', 'end' => '18:00'],
+        ['start' => '18:00', 'end' => '21:00'],
+    ];
+
+    private const ALL_DAY_AVAILABLE_START = '09:00';
+
+    private const ALL_DAY_AVAILABLE_END = '18:00';
+
     /**
-     * @return list<array{date: string, label: string}>
+     * @return list<array{date: string, start_time: string, end_time: string, label: string}>
      */
-    public function fetchAvailableSlots(?string $googleCalendarId, Carbon $from, Carbon $to): array
+    public function fetchAvailableThreeHourSlots(?string $googleCalendarId, Carbon $from, Carbon $to): array
     {
         if ($googleCalendarId === null || $googleCalendarId === '') {
             return [];
@@ -34,7 +46,9 @@ final class GoogleCalendarAvailabilityService
         }
 
         try {
-            return $this->fetchSlotsFromApi($googleCalendarId, $from, $to, $client);
+            $windows = $this->fetchAvailabilityWindowsFromApi($googleCalendarId, $from, $to, $client);
+
+            return $this->buildThreeHourSlotsFromWindows($windows, $from, $to);
         } catch (\Throwable $e) {
             Log::error('Google Calendar API failed', [
                 'calendar_id' => $googleCalendarId,
@@ -43,6 +57,168 @@ final class GoogleCalendarAvailabilityService
 
             return [];
         }
+    }
+
+    /**
+     * @return list<array{date: string, start_time: string, end_time: string, label: string}>
+     */
+    public function fetchAvailableSlots(?string $googleCalendarId, Carbon $from, Carbon $to): array
+    {
+        return $this->fetchAvailableThreeHourSlots($googleCalendarId, $from, $to);
+    }
+
+    public function isThreeHourSlotAvailable(
+        ?string $googleCalendarId,
+        string $date,
+        string $startTime,
+        string $endTime,
+        Carbon $from,
+        Carbon $to,
+    ): bool {
+        $slots = $this->fetchAvailableThreeHourSlots($googleCalendarId, $from, $to);
+
+        foreach ($slots as $slot) {
+            if ($slot['date'] === $date
+                && $slot['start_time'] === $startTime
+                && $slot['end_time'] === $endTime) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<array{start: Carbon, end: Carbon}>  $windows
+     * @return list<array{date: string, start_time: string, end_time: string, label: string}>
+     */
+    public function buildThreeHourSlotsFromWindows(array $windows, Carbon $from, Carbon $to): array
+    {
+        $tz = 'Asia/Tokyo';
+        $cursor = $from->copy()->timezone($tz)->startOfDay();
+        $lastDay = $to->copy()->timezone($tz)->startOfDay();
+
+        $out = [];
+        while ($cursor->lte($lastDay)) {
+            foreach (self::THREE_HOUR_SLOT_DEFINITIONS as $definition) {
+                $slotStart = $cursor->copy()->setTimeFromTimeString($definition['start']);
+                $slotEnd = $cursor->copy()->setTimeFromTimeString($definition['end']);
+
+                if (! $this->slotOverlapsAnyWindow($slotStart, $slotEnd, $windows)) {
+                    continue;
+                }
+
+                $date = $cursor->format('Y-m-d');
+                $out[] = [
+                    'date' => $date,
+                    'start_time' => $definition['start'],
+                    'end_time' => $definition['end'],
+                    'label' => $this->formatSlotLabel($slotStart, $definition['start'], $definition['end']),
+                ];
+            }
+
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{start: Carbon, end: Carbon}>
+     */
+    private function fetchAvailabilityWindowsFromApi(
+        string $calendarId,
+        Carbon $from,
+        Carbon $to,
+        GoogleClient $client,
+    ): array {
+        $keyword = (string) config('services.google.calendar_slot_title_keyword', '工事対応可能');
+
+        $calendarService = new GoogleCalendarService($client);
+
+        $timeMin = $from->copy()->startOfDay()->timezone('Asia/Tokyo')->toIso8601String();
+        $timeMax = $to->copy()->endOfDay()->timezone('Asia/Tokyo')->toIso8601String();
+
+        $events = $calendarService->events->listEvents($calendarId, [
+            'timeMin' => $timeMin,
+            'timeMax' => $timeMax,
+            'singleEvents' => true,
+            'orderBy' => 'startTime',
+            'maxResults' => 250,
+        ]);
+
+        $items = $events->getItems();
+        if (! is_array($items)) {
+            return [];
+        }
+
+        $windows = [];
+        foreach ($items as $event) {
+            if (! $event instanceof Event) {
+                continue;
+            }
+
+            $summary = (string) ($event->getSummary() ?? '');
+            if ($keyword !== '' && ! str_contains($summary, $keyword)) {
+                continue;
+            }
+
+            $start = $event->getStart();
+            if ($start === null) {
+                continue;
+            }
+
+            $dateStr = $start->getDate();
+            if (is_string($dateStr) && $dateStr !== '') {
+                $dayStart = Carbon::parse($dateStr, 'Asia/Tokyo')->startOfDay()
+                    ->setTimeFromTimeString(self::ALL_DAY_AVAILABLE_START);
+                $dayEnd = Carbon::parse($dateStr, 'Asia/Tokyo')->startOfDay()
+                    ->setTimeFromTimeString(self::ALL_DAY_AVAILABLE_END);
+                $windows[] = ['start' => $dayStart, 'end' => $dayEnd];
+
+                continue;
+            }
+
+            $dateTimeStr = $start->getDateTime();
+            if (! is_string($dateTimeStr) || $dateTimeStr === '') {
+                continue;
+            }
+
+            $windowStart = Carbon::parse($dateTimeStr)->timezone('Asia/Tokyo');
+            $end = $event->getEnd();
+            $endDateTimeStr = $end?->getDateTime();
+            $windowEnd = is_string($endDateTimeStr) && $endDateTimeStr !== ''
+                ? Carbon::parse($endDateTimeStr)->timezone('Asia/Tokyo')
+                : $windowStart->copy()->addHour();
+
+            if ($windowEnd->lte($windowStart)) {
+                continue;
+            }
+
+            $windows[] = ['start' => $windowStart, 'end' => $windowEnd];
+        }
+
+        return $windows;
+    }
+
+    /**
+     * @param  list<array{start: Carbon, end: Carbon}>  $windows
+     */
+    private function slotOverlapsAnyWindow(Carbon $slotStart, Carbon $slotEnd, array $windows): bool
+    {
+        foreach ($windows as $window) {
+            if ($slotStart->lt($window['end']) && $slotEnd->gt($window['start'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function formatSlotLabel(Carbon $day, string $startTime, string $endTime): string
+    {
+        return $day->copy()->locale('ja')->isoFormat('M月D日（ddd）')
+            .$startTime.'–'.$endTime;
     }
 
     private function resolvedCredentialsPath(): ?string
@@ -97,65 +273,5 @@ final class GoogleCalendarAvailabilityService
         $client->setAuthConfig($credentialsPath);
 
         return $client;
-    }
-
-    /**
-     * @return list<array{date: string, label: string}>
-     */
-    private function fetchSlotsFromApi(string $calendarId, Carbon $from, Carbon $to, GoogleClient $client): array
-    {
-        // 空文字にするとタイトル条件なし（全日程を枠として返す）。未設定時の既定は config 側で「対応可能」
-        $keyword = (string) config('services.google.calendar_slot_title_keyword', '対応可能');
-
-        $calendarService = new GoogleCalendarService($client);
-
-        $timeMin = $from->copy()->startOfDay()->timezone('Asia/Tokyo')->toIso8601String();
-        $timeMax = $to->copy()->endOfDay()->timezone('Asia/Tokyo')->toIso8601String();
-
-        $events = $calendarService->events->listEvents($calendarId, [
-            'timeMin' => $timeMin,
-            'timeMax' => $timeMax,
-            'singleEvents' => true,
-            'orderBy' => 'startTime',
-            'maxResults' => 250,
-        ]);
-
-        $items = $events->getItems();
-        if (! is_array($items)) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($items as $event) {
-            if (! $event instanceof Event) {
-                continue;
-            }
-            $summary = (string) ($event->getSummary() ?? '');
-            if ($keyword !== '' && ! str_contains($summary, $keyword)) {
-                continue;
-            }
-
-            $start = $event->getStart();
-            if ($start === null) {
-                continue;
-            }
-
-            $dateStr = $start->getDate();
-            $dateTimeStr = $start->getDateTime();
-            if (is_string($dateStr) && $dateStr !== '') {
-                $label = $summary !== '' ? $summary : $keyword.'（終日）';
-                $out[] = ['date' => $dateStr, 'label' => $label];
-
-                continue;
-            }
-            if (is_string($dateTimeStr) && $dateTimeStr !== '') {
-                $dt = Carbon::parse($dateTimeStr)->timezone('Asia/Tokyo');
-                $d = $dt->format('Y-m-d');
-                $label = $summary !== '' ? $summary : $dt->locale('ja')->isoFormat('M月D日（ddd）H:mm');
-                $out[] = ['date' => $d, 'label' => $label];
-            }
-        }
-
-        return $out;
     }
 }

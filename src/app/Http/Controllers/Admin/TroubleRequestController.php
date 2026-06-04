@@ -54,6 +54,7 @@ final class TroubleRequestController extends Controller
             'category',
             'vendor',
             'requestAttachments',
+            'preferredSlots',
         ]);
 
         return view('admin.trouble_requests.edit', ['request' => $troubleRequest]);

@@ -36,9 +36,26 @@
                     <option value="">指定なし</option>
                 </select>
             </div>
-            <div class="liff-field">
-                <label for="preferred_date">希望日（任意）</label>
-                <input type="date" id="preferred_date" name="preferred_date" />
+            <div id="panel-preferred-slots" class="hidden">
+                <p class="liff-hint" id="preferred-slots-status"></p>
+                <div class="liff-field">
+                    <label for="preferred_slot_1">第1希望（必須）</label>
+                    <select id="preferred_slot_1" name="preferred_slot_1" disabled>
+                        <option value="">選択してください</option>
+                    </select>
+                </div>
+                <div class="liff-field">
+                    <label for="preferred_slot_2">第2希望（任意）</label>
+                    <select id="preferred_slot_2" name="preferred_slot_2" disabled>
+                        <option value="">選択しない</option>
+                    </select>
+                </div>
+                <div class="liff-field">
+                    <label for="preferred_slot_3">第3希望（任意）</label>
+                    <select id="preferred_slot_3" name="preferred_slot_3" disabled>
+                        <option value="">選択しない</option>
+                    </select>
+                </div>
             </div>
             <div class="liff-field">
                 <label for="description">詳細</label>
@@ -86,8 +103,18 @@
     const phoneEmergencyEl = document.getElementById('phone-trouble-emergency');
     const troubleLeadEl = document.getElementById('trouble-lead');
     const descriptionEl = document.getElementById('description');
+    const panelPreferredSlots = document.getElementById('panel-preferred-slots');
+    const preferredSlotsStatusEl = document.getElementById('preferred-slots-status');
+    const preferredSlotSelects = [
+        document.getElementById('preferred_slot_1'),
+        document.getElementById('preferred_slot_2'),
+        document.getElementById('preferred_slot_3'),
+    ];
 
     let propertyId = null;
+    let currentCategoryId = null;
+    /** @type {Array<{date:string,start_time:string,end_time:string,label:string}>} */
+    var vendorAvailableSlots = [];
     /** @type {Array<{id:number,display_name:string,show_phone_number:boolean,emergency_phone:string|null}>} */
     var troubleCategoryRows = [];
 
@@ -312,8 +339,11 @@
         if (!id || !cat) {
             troubleLeadEl.textContent = 'まず困りごと種別を選んでください。';
             vendorSelect.innerHTML = '<option value="">指定なし</option>';
+            resetPreferredSlotsPanel();
             return;
         }
+
+        currentCategoryId = id;
 
         if (cat.show_phone_number) {
             troubleLeadEl.textContent = 'お電話にてご連絡ください。';
@@ -329,8 +359,128 @@
         }
     }
 
+    function slotKey(slot) {
+        return slot.date + '|' + slot.start_time + '|' + slot.end_time;
+    }
+
+    function resetPreferredSlotsPanel() {
+        vendorAvailableSlots = [];
+        if (panelPreferredSlots) {
+            panelPreferredSlots.classList.add('hidden');
+        }
+        if (preferredSlotsStatusEl) {
+            preferredSlotsStatusEl.textContent = '';
+        }
+        preferredSlotSelects.forEach(function (sel, index) {
+            if (!sel) return;
+            sel.innerHTML = index === 0
+                ? '<option value="">選択してください</option>'
+                : '<option value="">選択しない</option>';
+            sel.value = '';
+            sel.disabled = true;
+        });
+    }
+
+    function populatePreferredSlotOptions() {
+        preferredSlotSelects.forEach(function (sel, index) {
+            if (!sel) return;
+            var current = sel.value;
+            sel.innerHTML = index === 0
+                ? '<option value="">選択してください</option>'
+                : '<option value="">選択しない</option>';
+            vendorAvailableSlots.forEach(function (slot) {
+                var o = document.createElement('option');
+                o.value = slotKey(slot);
+                o.textContent = slot.label || (slot.date + ' ' + slot.start_time + '–' + slot.end_time);
+                sel.appendChild(o);
+            });
+            if (current && Array.prototype.some.call(sel.options, function (opt) { return opt.value === current; })) {
+                sel.value = current;
+            }
+        });
+        syncPreferredSlotSelections();
+    }
+
+    function syncPreferredSlotSelections() {
+        var selected = {};
+        preferredSlotSelects.forEach(function (sel) {
+            if (!sel || !sel.value) return;
+            selected[sel.value] = true;
+        });
+
+        preferredSlotSelects.forEach(function (sel) {
+            if (!sel) return;
+            var own = sel.value;
+            Array.prototype.forEach.call(sel.options, function (opt) {
+                if (!opt.value || opt.value === own) {
+                    opt.disabled = false;
+                    return;
+                }
+                opt.disabled = !!selected[opt.value];
+            });
+        });
+    }
+
+    async function loadVendorSlots(vendorId) {
+        resetPreferredSlotsPanel();
+        if (!vendorId || !currentCategoryId || !propertyId) {
+            return;
+        }
+
+        if (panelPreferredSlots) {
+            panelPreferredSlots.classList.remove('hidden');
+        }
+        if (preferredSlotsStatusEl) {
+            preferredSlotsStatusEl.textContent = '空き時間を読み込んでいます…';
+        }
+
+        const u = new URL('/api/vendors/availability', API_ORIGIN);
+        u.searchParams.set('category_id', String(currentCategoryId));
+        u.searchParams.set('property_id', String(propertyId));
+        u.searchParams.set('vendor_id', String(vendorId));
+
+        try {
+            const res = await fetch(u.toString(), { headers: Object.assign({}, BASE_HEADERS) });
+            const text = await res.text();
+            let body;
+            try {
+                body = JSON.parse(text);
+            } catch (_) {
+                throw new Error('空き時間の応答が不正です。');
+            }
+            if (!res.ok) {
+                throw new Error((body && body.message) || '空き時間の取得に失敗しました。');
+            }
+
+            vendorAvailableSlots = Array.isArray(body.available_slots) ? body.available_slots : [];
+            preferredSlotSelects.forEach(function (sel) {
+                if (sel) sel.disabled = false;
+            });
+
+            if (vendorAvailableSlots.length === 0) {
+                if (preferredSlotsStatusEl) {
+                    preferredSlotsStatusEl.textContent = '選択可能な空き時間がありません。別の業者を選ぶか、業者指定なしで送信してください。';
+                }
+                preferredSlotSelects.forEach(function (sel) {
+                    if (sel) sel.disabled = true;
+                });
+                return;
+            }
+
+            if (preferredSlotsStatusEl) {
+                preferredSlotsStatusEl.textContent = '第1希望（必須）から順に、空いている日時を選んでください。';
+            }
+            populatePreferredSlotOptions();
+        } catch (e) {
+            if (preferredSlotsStatusEl) {
+                preferredSlotsStatusEl.textContent = e.message || String(e);
+            }
+        }
+    }
+
     async function loadVendors(categoryId) {
         vendorSelect.innerHTML = '<option value="">指定なし</option>';
+        resetPreferredSlotsPanel();
         if (!categoryId || !propertyId) return;
         const u = new URL('/api/vendors/availability', API_ORIGIN);
         u.searchParams.set('category_id', String(categoryId));
@@ -371,6 +521,24 @@
         syncCategoryPanels();
     });
 
+    vendorSelect.addEventListener('change', function () {
+        var vid = vendorSelect.value ? parseInt(vendorSelect.value, 10) : null;
+        if (vid) {
+            loadVendorSlots(vid).catch(function (e) {
+                if (preferredSlotsStatusEl) {
+                    preferredSlotsStatusEl.textContent = e.message || String(e);
+                }
+            });
+        } else {
+            resetPreferredSlotsPanel();
+        }
+    });
+
+    preferredSlotSelects.forEach(function (sel) {
+        if (!sel) return;
+        sel.addEventListener('change', syncPreferredSlotSelections);
+    });
+
     document.getElementById('trouble_files').addEventListener('change', function () {
         var el = document.getElementById('trouble_files');
         var n = el.files ? el.files.length : 0;
@@ -396,6 +564,14 @@
             showErr('詳細を入力してください。');
             return;
         }
+        const vid = vendorSelect.value ? parseInt(vendorSelect.value, 10) : null;
+        if (vid) {
+            const first = preferredSlotSelects[0] ? preferredSlotSelects[0].value : '';
+            if (!first) {
+                showErr('業者を指定する場合は第1希望の日時を選択してください。');
+                return;
+            }
+        }
         btnSubmit.disabled = true;
         try {
             const fileInput = document.getElementById('trouble_files');
@@ -405,19 +581,32 @@
                 attachments = await uploadTroubleMediaFiles(fileInput.files);
                 statusEl.classList.add('hidden');
             }
-            const vid = vendorSelect.value ? parseInt(vendorSelect.value, 10) : null;
-            const pref = document.getElementById('preferred_date').value || null;
+            var preferredSlots = [];
+            if (vid) {
+                preferredSlotSelects.forEach(function (sel, index) {
+                    if (!sel || !sel.value) return;
+                    var parts = sel.value.split('|');
+                    if (parts.length !== 3) return;
+                    preferredSlots.push({
+                        priority: index + 1,
+                        date: parts[0],
+                        start_time: parts[1],
+                        end_time: parts[2],
+                    });
+                });
+            }
             const payload = {
                 category_id: parseInt(categorySelect.value, 10),
                 description: document.getElementById('description').value.trim(),
                 vendor_id: vid,
-                preferred_date: pref,
+                preferred_slots: preferredSlots,
                 attachments: attachments,
             };
             const data = await apiJson(API_ORIGIN + '/api/trouble-requests', { method: 'POST', body: JSON.stringify(payload) });
             alert((data.message || '受付しました') + (data.request_id ? '（依頼番号: ' + data.request_id + '）' : ''));
             form.reset();
             vendorSelect.innerHTML = '<option value="">指定なし</option>';
+            resetPreferredSlotsPanel();
             document.getElementById('trouble_files_note').textContent = '';
             syncCategoryPanels();
         } catch (e) {

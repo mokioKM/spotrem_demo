@@ -60,7 +60,7 @@ return [
         'calendar_credentials_path' => env('GOOGLE_CALENDAR_CREDENTIALS_PATH'),
         // Render 等: サービスアカウント JSON を base64（改行なし）で渡すとファイル不要。設定時は PATH より優先
         'calendar_credentials_base64' => env('GOOGLE_CALENDAR_CREDENTIALS_BASE64'),
-        'calendar_slot_title_keyword' => env('GOOGLE_CALENDAR_SLOT_TITLE_KEYWORD', '対応可能'),
+        'calendar_slot_title_keyword' => env('GOOGLE_CALENDAR_SLOT_TITLE_KEYWORD', '工事対応可能'),
     ],
 
     'cloudinary' => [

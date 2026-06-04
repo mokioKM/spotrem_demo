@@ -24,6 +24,7 @@ final class TroubleRequestStoreController extends Controller
 
         $validated = $request->validated();
         $validated['attachments'] = $request->attachmentsPayload();
+        $validated['preferred_slots'] = $request->preferredSlotsPayload();
 
         $tr = $this->troubleSubmissionService->submit($lineUid, $validated);
 

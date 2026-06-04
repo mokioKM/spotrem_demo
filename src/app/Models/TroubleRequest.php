@@ -79,4 +79,12 @@ class TroubleRequest extends Model
     {
         return $this->hasMany(RequestAttachment::class, 'request_id');
     }
+
+    /**
+     * @return HasMany<TroubleRequestPreferredSlot, $this>
+     */
+    public function preferredSlots(): HasMany
+    {
+        return $this->hasMany(TroubleRequestPreferredSlot::class)->orderBy('priority');
+    }
 }

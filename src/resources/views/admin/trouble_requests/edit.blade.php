@@ -30,8 +30,30 @@
                     <dd>{{ $request->vendor?->name ?? '（未指定）' }}</dd>
                 </div>
                 <div>
-                    <dt class="text-slate-500">希望日</dt>
-                    <dd>{{ $request->preferred_date?->format('Y-m-d') ?? '—' }}</dd>
+                    <dt class="text-slate-500">希望日時</dt>
+                    <dd>
+                        @php
+                            $slots = $request->preferredSlots;
+                        @endphp
+                        @if ($slots->isEmpty())
+                            {{ $request->preferred_date?->format('Y-m-d') ?? '—' }}
+                        @else
+                            <ul class="mt-1 space-y-1">
+                                @for ($priority = 1; $priority <= 3; $priority++)
+                                    @php $slot = $slots->firstWhere('priority', $priority); @endphp
+                                    <li>
+                                        第{{ $priority }}希望:
+                                        @if ($slot)
+                                            {{ $slot->slot_date?->timezone('Asia/Tokyo')->format('Y-m-d') }}
+                                            {{ $slot->start_time }}–{{ $slot->end_time }}
+                                        @else
+                                            —
+                                        @endif
+                                    </li>
+                                @endfor
+                            </ul>
+                        @endif
+                    </dd>
                 </div>
                 <div>
                     <dt class="text-slate-500">訪問予定</dt>
