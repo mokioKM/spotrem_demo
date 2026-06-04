@@ -57,13 +57,20 @@
 </div>
 
 <div>
-    <label class="flex items-center gap-2 text-sm text-slate-700">
-        <input type="hidden" name="is_active" value="0">
-        <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $resident->is_active))>
-        有効
-    </label>
-    @unless(auth('admin')->user()?->isSuperAdmin())
-        <p class="mt-1 text-xs text-slate-500">有効／無効の切り替えはスーパー管理者のみ操作できます。</p>
+    <label for="is_active" class="mb-1 block text-sm font-medium text-slate-700">入居状態</label>
+    @php
+        $canChangeOccupancy = auth('admin')->user()?->isSuperAdmin() ?? false;
+        $occupancyValue = old('is_active', $resident->is_active ? '1' : '0');
+    @endphp
+    <select name="is_active" id="is_active" required
+            @disabled(! $canChangeOccupancy)
+            class="mt-1 w-full max-w-xs rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 disabled:bg-slate-100 disabled:text-slate-600">
+        <option value="1" @selected((string) $occupancyValue === '1')>入居中</option>
+        <option value="0" @selected((string) $occupancyValue === '0')>退去済</option>
+    </select>
+    @unless($canChangeOccupancy)
+        <input type="hidden" name="is_active" value="{{ $resident->is_active ? '1' : '0' }}">
+        <p class="mt-1 text-xs text-slate-500">入居状態の変更はスーパー管理者のみ操作できます。</p>
     @endunless
     @error('is_active')
         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>

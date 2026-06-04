@@ -19,10 +19,8 @@ class StoreVendorRequest extends FormRequest
         $text = $this->string('regions_text')->toString();
         $lines = preg_split('/\R/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $regions = array_values(array_unique(array_filter(array_map('trim', $lines), static fn (string $r): bool => $r !== '')));
-        $gid = $this->input('line_messaging_group_id');
         $this->merge([
             'regions' => $regions,
-            'line_messaging_group_id' => (is_string($gid) && trim($gid) !== '') ? trim($gid) : null,
         ]);
     }
 
@@ -34,7 +32,6 @@ class StoreVendorRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:200'],
             'phone' => ['required', 'string', 'max:20', 'regex:/^[0-9\\-]+$/'],
-            'line_messaging_group_id' => ['nullable', 'string', 'max:255'],
             'google_calendar_id' => ['nullable', 'string', 'max:255'],
             'is_active' => ['required', 'boolean'],
             'category_ids' => ['required', 'array', 'min:1'],

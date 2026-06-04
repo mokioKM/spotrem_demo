@@ -7,8 +7,8 @@ use App\Http\Controllers\Admin\InvitationTokenController;
 use App\Http\Controllers\Admin\OptionBillingController;
 use App\Http\Controllers\Admin\OptionContractController;
 use App\Http\Controllers\Admin\PropertyController;
+use App\Http\Controllers\Admin\FormerResidentAdminController;
 use App\Http\Controllers\Admin\ResidentAdminController;
-use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\TroubleCategoryController;
 use App\Http\Controllers\Admin\TroubleRequestController;
 use App\Http\Controllers\Admin\VendorController;
@@ -51,6 +51,8 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::resource('properties', PropertyController::class)->only(['index', 'create', 'store', 'edit', 'update', 'destroy']);
         Route::resource('vendors', VendorController::class)->only(['index', 'create', 'store', 'edit', 'update', 'destroy']);
         Route::resource('residents', ResidentAdminController::class)->only(['index', 'edit', 'update']);
+        Route::get('former-residents', [FormerResidentAdminController::class, 'index'])->name('former-residents.index');
+        Route::get('former-residents/{resident}', [FormerResidentAdminController::class, 'show'])->name('former-residents.show');
 
         Route::resource('trouble-categories', TroubleCategoryController::class)->only(['index', 'create', 'store', 'edit', 'update']);
 
@@ -61,9 +63,6 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::post('trouble-requests/{troubleRequest}/schedule', [TroubleRequestController::class, 'schedule'])->name('trouble-requests.schedule');
         Route::post('trouble-requests/{troubleRequest}/complete', [TroubleRequestController::class, 'complete'])->name('trouble-requests.complete');
         Route::post('trouble-requests/{troubleRequest}/cancel', [TroubleRequestController::class, 'cancel'])->name('trouble-requests.cancel');
-
-        Route::get('settings/notification-group', [SystemSettingController::class, 'edit'])->name('settings.notification-group');
-        Route::put('settings/notification-group', [SystemSettingController::class, 'update'])->name('settings.notification-group.update');
 
         Route::resource('option-contracts', OptionContractController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::post('option-contracts/{option_contract}/send-demo', [OptionContractController::class, 'sendDemo'])

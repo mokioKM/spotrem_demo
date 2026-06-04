@@ -17,7 +17,6 @@ class Vendor extends Model
         'name',
         'phone',
         'line_uid',
-        'line_messaging_group_id',
         'google_calendar_id',
         'is_active',
     ];

@@ -13,9 +13,6 @@ class SystemSetting extends Model
 {
     public const CREATED_AT = null;
 
-    /** 管理会社グループ通知先（Messaging API の groupId / roomId 等） */
-    public const KEY_NOTIFICATION_GROUP_LINE_UID = 'notification_group_line_uid';
-
     protected $primaryKey = 'key';
 
     protected $keyType = 'string';

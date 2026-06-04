@@ -23,14 +23,19 @@ final class ResidentRepository implements ResidentRepositoryInterface
             ->first();
     }
 
-    public function paginateForAdmin(?int $propertyId, int $perPage): LengthAwarePaginator
+    public function paginateForAdmin(?int $propertyId, ?bool $isActive, int $perPage): LengthAwarePaginator
     {
         $q = Resident::query()
             ->with(['property'])
-            ->orderByDesc('created_at');
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id');
 
         if ($propertyId !== null && $propertyId > 0) {
             $q->where('property_id', $propertyId);
+        }
+
+        if ($isActive !== null) {
+            $q->where('is_active', $isActive);
         }
 
         return $q->paginate($perPage)->withQueryString();

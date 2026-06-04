@@ -54,9 +54,12 @@ final class InvitationTokenController extends Controller
         );
 
         $url = $this->invitationService->publicInviteUrl($token->token);
+        $lineCommand = $this->invitationService->lineRegistrationCommand($token);
 
         return redirect()
             ->route('admin.invitation-tokens.index')
-            ->with('status', __('招待URLを発行しました。').' '.$url);
+            ->with('status', __('招待を発行しました。'))
+            ->with('invite_url', $url)
+            ->with('invite_line_command', $lineCommand);
     }
 }

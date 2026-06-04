@@ -13,7 +13,7 @@ interface ResidentRepositoryInterface
 
     public function findActiveByLineUid(string $lineUid): ?Resident;
 
-    public function paginateForAdmin(?int $propertyId, int $perPage): LengthAwarePaginator;
+    public function paginateForAdmin(?int $propertyId, ?bool $isActive, int $perPage): LengthAwarePaginator;
 
     public function create(array $attributes): Resident;
 

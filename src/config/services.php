@@ -47,6 +47,9 @@ return [
         // Messaging API（プッシュ・Webhook 署名検証）。チャネルは LIFF と同一またはリンクした Bot チャネル
         'messaging_channel_access_token' => env('LINE_CHANNEL_ACCESS_TOKEN'),
         'messaging_channel_secret' => env('LINE_CHANNEL_SECRET'),
+        // Webhook テキスト連携（公式 LINE トークへ送信する文言の先頭）
+        'vendor_line_registration_prefix' => env('LINE_VENDOR_REGISTRATION_PREFIX', '業者連携'),
+        'admin_line_registration_prefix' => env('LINE_ADMIN_REGISTRATION_PREFIX', '担当者連携'),
     ],
 
     /*

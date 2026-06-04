@@ -16,7 +16,12 @@ final class ResidentAdminService
 
     public function listPaginated(?int $propertyId, int $perPage)
     {
-        return $this->residentRepository->paginateForAdmin($propertyId, $perPage);
+        return $this->residentRepository->paginateForAdmin($propertyId, true, $perPage);
+    }
+
+    public function listMovedOutPaginated(?int $propertyId, int $perPage)
+    {
+        return $this->residentRepository->paginateForAdmin($propertyId, false, $perPage);
     }
 
     public function findOrFail(int $id): Resident
@@ -59,7 +64,7 @@ final class ResidentAdminService
     {
         $actor->loadMissing('role');
         if (! $actor->isSuperAdmin()) {
-            abort(403, __('入居者の有効／無効を変更できるのはスーパー管理者のみです。'));
+            abort(403, __('入居状態（入居中／退去済）を変更できるのはスーパー管理者のみです。'));
         }
     }
 }

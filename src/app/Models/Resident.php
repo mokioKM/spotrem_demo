@@ -58,4 +58,14 @@ class Resident extends Model
     {
         return $this->hasMany(OptionContract::class);
     }
+
+    public function isOccupied(): bool
+    {
+        return $this->is_active;
+    }
+
+    public function occupancyStatusLabel(): string
+    {
+        return $this->is_active ? '入居中' : '退去済';
+    }
 }

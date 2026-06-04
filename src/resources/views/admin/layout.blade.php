@@ -14,12 +14,12 @@
             <nav class="flex flex-wrap gap-3 text-sm">
                 <a href="{{ route('admin.properties.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.properties.*')) font-medium text-slate-900 @endif">物件</a>
                 <a href="{{ route('admin.residents.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.residents.*')) font-medium text-slate-900 @endif">入居者</a>
+                <a href="{{ route('admin.former-residents.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.former-residents.*')) font-medium text-slate-900 @endif">退去者</a>
                 <a href="{{ route('admin.vendors.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.vendors.*')) font-medium text-slate-900 @endif">業者</a>
                 <a href="{{ route('admin.trouble-categories.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.trouble-categories.*')) font-medium text-slate-900 @endif">困りごと種別</a>
                 <a href="{{ route('admin.invitation-tokens.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.invitation-tokens.*')) font-medium text-slate-900 @endif">招待</a>
                 <a href="{{ route('admin.trouble-requests.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.trouble-requests.*')) font-medium text-slate-900 @endif">依頼</a>
                 <a href="{{ route('admin.option-contracts.index') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.option-contracts.*')) font-medium text-slate-900 @endif">オプション</a>
-                <a href="{{ route('admin.settings.notification-group') }}" class="text-slate-600 hover:text-slate-900 @if(request()->routeIs('admin.settings.*')) font-medium text-slate-900 @endif">設定</a>
             </nav>
         </div>
         @auth('admin')

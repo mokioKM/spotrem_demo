@@ -14,7 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
-class TroubleVendorCooperationGroupNotificationTest extends TestCase
+class TroubleVendorDirectNotificationTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -35,7 +35,7 @@ class TroubleVendorCooperationGroupNotificationTest extends TestCase
         ]);
     }
 
-    public function test_pushes_trouble_summary_to_vendor_cooperation_line_group(): void
+    public function test_pushes_trouble_summary_to_vendor_line_uid(): void
     {
         $property = Property::query()->create([
             'name' => 'テスト物件',
@@ -57,8 +57,7 @@ class TroubleVendorCooperationGroupNotificationTest extends TestCase
         $vendor = Vendor::query()->create([
             'name' => 'テスト業者',
             'phone' => '03-0000-0000',
-            'line_uid' => null,
-            'line_messaging_group_id' => 'C012345678901234567890123456789ab',
+            'line_uid' => 'Uvendorlineuidvendorlineuidvend',
             'google_calendar_id' => null,
             'is_active' => true,
         ]);
@@ -100,18 +99,19 @@ class TroubleVendorCooperationGroupNotificationTest extends TestCase
                 return false;
             }
             $data = $request->data();
-            if (($data['to'] ?? null) !== $vendor->line_messaging_group_id) {
+            if (($data['to'] ?? null) !== $vendor->line_uid) {
                 return false;
             }
             $text = $data['messages'][0]['text'] ?? '';
 
-            return str_contains((string) $text, 'トラブル依頼') && str_contains((string) $text, '水道が漏れています');
+            return str_contains((string) $text, '修理依頼')
+                && str_contains((string) $text, '水道が漏れています');
         });
 
         $this->assertDatabaseHas('notification_logs', [
             'recipient_type' => 'vendor',
             'recipient_id' => $vendor->id,
-            'event_type' => 'trouble_vendor_cooperation_group',
+            'event_type' => 'vendor_dispatched',
             'status' => 'success',
         ]);
     }

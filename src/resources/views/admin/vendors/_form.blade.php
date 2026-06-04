@@ -22,18 +22,6 @@
 </div>
 
 <div>
-    <label for="line_messaging_group_id" class="mb-1 block text-sm font-medium text-slate-700">トラブル共有用 LINE グループ ID（任意）</label>
-    <input type="text" name="line_messaging_group_id" id="line_messaging_group_id" maxlength="255"
-           value="{{ old('line_messaging_group_id', $v?->line_messaging_group_id) }}"
-           placeholder="例）Cxxxxxxxx…（業者と管理担当が同一のグループトーク）"
-           class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500">
-    <p class="mt-1 text-xs text-slate-500">1 業者につき 1 グループ。入居者からトラブルが届き担当業者が付いたとき、この ID 宛に依頼内容をプッシュします。空欄のときはグループ通知しません。</p>
-    @error('line_messaging_group_id')
-        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-    @enderror
-</div>
-
-<div>
     <label for="google_calendar_id" class="mb-1 block text-sm font-medium text-slate-700">Google カレンダー ID（任意）</label>
     <input type="text" name="google_calendar_id" id="google_calendar_id" maxlength="255"
            value="{{ old('google_calendar_id', $v?->google_calendar_id) }}"
@@ -84,9 +72,9 @@
     <div class="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
         <span class="font-medium text-slate-700">LINE 連携:</span>
         @if ($v->line_uid)
-            登録済（変更・クリアは招待URL／スーパー管理者向け機能で行います）
+            登録済（変更は招待の再発行または LIFF 連携で行います）
         @else
-            未登録
+            未登録 — 招待管理で業者用トークンを発行し、公式 LINE に「業者連携 {トークン}」を送信してもらってください
         @endif
     </div>
 @endif

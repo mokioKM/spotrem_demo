@@ -78,12 +78,23 @@ class ResidentAdminTest extends TestCase
             'registered_at' => now(),
             'is_active' => true,
         ]);
+        Resident::query()->create([
+            'property_id' => $p1->id,
+            'line_uid' => 'Ugone',
+            'name' => '旧入居 花子',
+            'age' => null,
+            'room_number' => '999',
+            'phone' => '090-0000-0099',
+            'registered_at' => now()->subYear(),
+            'is_active' => false,
+        ]);
 
         $response = $this->actingAs($admin, 'admin')->get('/admin/residents?property_id='.$p1->id);
 
         $response->assertOk();
         $response->assertSee('山田');
         $response->assertDontSee('佐藤');
+        $response->assertDontSee('旧入居 花子');
     }
 
     public function test_admin_can_update_resident(): void
@@ -122,6 +133,43 @@ class ResidentAdminTest extends TestCase
             'name' => '新名',
             'room_number' => '2',
             'phone' => '090-2222-2222',
+            'is_active' => true,
+        ]);
+    }
+
+    public function test_super_admin_can_mark_resident_as_moved_out(): void
+    {
+        $admin = $this->actingSuperAdmin();
+        $p = Property::query()->create([
+            'name' => '物件',
+            'address' => 'x',
+            'region' => '東京都',
+            'room_count' => 1,
+            'is_active' => true,
+        ]);
+        $r = Resident::query()->create([
+            'property_id' => $p->id,
+            'line_uid' => 'Umove',
+            'name' => '対象',
+            'age' => null,
+            'room_number' => '1',
+            'phone' => '090-1111-1111',
+            'registered_at' => now(),
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')->put('/admin/residents/'.$r->id, [
+            'property_id' => (string) $p->id,
+            'name' => '対象',
+            'room_number' => '1',
+            'phone' => '090-1111-1111',
+            'is_active' => '0',
+        ]);
+
+        $response->assertRedirect(route('admin.residents.index'));
+        $this->assertDatabaseHas('residents', [
+            'id' => $r->id,
+            'is_active' => false,
         ]);
     }
 }

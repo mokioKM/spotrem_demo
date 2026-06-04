@@ -68,6 +68,18 @@ final class InvitationService
     }
 
     /**
+     * 公式 LINE トークへ送る連携用テキスト（Webhook テキスト連携と同じ形式）
+     */
+    public function lineRegistrationCommand(InvitationToken $invitation): string
+    {
+        $prefix = $invitation->role === 'vendor'
+            ? (string) config('services.line.vendor_line_registration_prefix', '業者連携')
+            : (string) config('services.line.admin_line_registration_prefix', '担当者連携');
+
+        return trim($prefix).' '.$invitation->token;
+    }
+
+    /**
      * LIFF から呼ばれる登録処理（ID トークンで確定した line_uid のみ使用する）
      */
     public function registerLineUid(string $plainToken, string $lineUid): void

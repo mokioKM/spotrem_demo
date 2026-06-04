@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Api;
 
+use App\Models\AdminUser;
 use App\Models\Property;
 use App\Models\RequestAttachment;
 use App\Models\Resident;
 use App\Models\TroubleRequest;
+use App\Models\Vendor;
 use App\Repositories\Contracts\ResidentRepositoryInterface;
 use App\Repositories\Contracts\VendorRepositoryInterface;
-use App\Models\SystemSetting;
 use App\Services\Calendar\GoogleCalendarAvailabilityService;
 use App\Services\Line\LineMessagingService;
 use App\Services\Media\CloudinaryTroubleAttachmentVerifier;
@@ -105,10 +106,6 @@ final class TroubleSubmissionService
 
     private function sendNotifications(TroubleRequest $request, Resident $resident, Property $property): void
     {
-        $categoryName = $request->category?->display_name ?? '';
-        $vendorName = $request->vendor?->name ?? '（未指定）';
-        $pref = $request->preferred_date?->format('Y-m-d') ?? '—';
-
         $residentText = $this->buildResidentAcknowledgementText($request, $resident, $property);
         $this->pushAndLog(
             (string) $resident->line_uid,
@@ -119,74 +116,64 @@ final class TroubleSubmissionService
             (int) $request->id,
         );
 
-        $groupText = "【新規トラブル依頼】\n物件：{$property->name} {$resident->room_number}号室\n種類：{$categoryName}\n希望日：{$pref}\n業者：{$vendorName}\n\n管理画面から詳細を確認してください。";
-        $groupId = SystemSetting::getValue(SystemSetting::KEY_NOTIFICATION_GROUP_LINE_UID);
-        if ($groupId !== null && $groupId !== '') {
-            $ok = $this->lineMessaging->pushToTarget($groupId, [['type' => 'text', 'text' => $groupText]], 'trouble_new_request');
-            $this->notificationLogWriter->write(
-                'group',
-                0,
-                'line_message',
-                'trouble_new_request',
-                $ok ? 'success' : 'failed',
-                (int) $request->id,
-            );
-        } else {
-            $this->notificationLogWriter->write(
-                'group',
-                0,
-                'line_message',
-                'trouble_new_request',
-                'skipped',
-                (int) $request->id,
-            );
-        }
-
-        if ($request->vendor_id !== null && $request->vendor?->line_uid) {
-            $v = $request->vendor;
-            $detail = mb_strimwidth($request->description, 0, 500, '…');
-            $vendorText = "【修理依頼】\n物件：{$property->name} {$resident->room_number}号室\n種類：{$categoryName}\n詳細：{$detail}\n希望日：{$pref}";
-            $this->pushAndLog(
-                (string) $v->line_uid,
-                [['type' => 'text', 'text' => $vendorText]],
-                'vendor',
-                (int) $v->id,
-                'vendor_dispatched',
-                (int) $request->id,
-            );
-        } elseif ($request->vendor_id !== null) {
-            $this->notificationLogWriter->write(
-                'vendor',
-                (int) $request->vendor_id,
-                'line_message',
-                'vendor_dispatched',
-                'skipped',
-                (int) $request->id,
-            );
-        }
-
-        // 業者ごとの「業者＋管理担当」LINE グループへ依頼内容をプッシュ（グループ ID は vendors.line_messaging_group_id）
-        $this->notifyVendorCooperationGroup($request, $resident, $property);
+        $this->notifyLinkedAdminUsers($request, $resident, $property);
+        $this->notifyAssignedVendor($request, $resident, $property);
     }
 
-    /**
-     * 担当業者に紐づく LINE グループ（Messaging API の groupId）へトラブル内容を通知する。
-     * 依頼は LIFF API 経由で登録されるが、LINE 側への配信は Messaging API の push と同じエンドポイントを使用する。
-     */
-    private function notifyVendorCooperationGroup(TroubleRequest $request, Resident $resident, Property $property): void
+    private function notifyLinkedAdminUsers(TroubleRequest $request, Resident $resident, Property $property): void
     {
-        $vendor = $request->vendor;
-        if ($vendor === null || $request->vendor_id === null) {
+        $admins = AdminUser::query()
+            ->where('is_active', true)
+            ->whereNotNull('line_uid')
+            ->where('line_uid', '!=', '')
+            ->get();
+
+        if ($admins->isEmpty()) {
+            $this->notificationLogWriter->write(
+                'admin',
+                0,
+                'line_message',
+                'trouble_new_request',
+                'skipped',
+                (int) $request->id,
+            );
+
             return;
         }
 
-        $groupId = $vendor->line_messaging_group_id;
-        if (! is_string($groupId) || trim($groupId) === '') {
+        $text = $this->buildAdminNewRequestText($request, $resident, $property);
+        $messages = [['type' => 'text', 'text' => $text]];
+
+        foreach ($admins as $admin) {
+            $this->pushAndLog(
+                (string) $admin->line_uid,
+                $messages,
+                'admin',
+                (int) $admin->id,
+                'trouble_new_request',
+                (int) $request->id,
+            );
+        }
+    }
+
+    private function notifyAssignedVendor(TroubleRequest $request, Resident $resident, Property $property): void
+    {
+        if ($request->vendor_id === null) {
+            return;
+        }
+
+        $vendor = $request->vendor;
+        if ($vendor === null) {
+            return;
+        }
+
+        $lineUid = $vendor->line_uid;
+        if (! is_string($lineUid) || trim($lineUid) === '') {
             $this->notificationLogWriter->write(
                 'vendor',
                 (int) $vendor->id,
                 'line_message',
-                'trouble_vendor_cooperation_group',
+                'vendor_dispatched',
                 'skipped',
                 (int) $request->id,
             );
@@ -194,7 +181,40 @@ final class TroubleSubmissionService
             return;
         }
 
-        $groupId = trim($groupId);
+        $text = $this->buildVendorDispatchedText($request, $resident, $property, $vendor);
+        $this->pushAndLog(
+            trim($lineUid),
+            [['type' => 'text', 'text' => $text]],
+            'vendor',
+            (int) $vendor->id,
+            'vendor_dispatched',
+            (int) $request->id,
+        );
+    }
+
+    private function buildAdminNewRequestText(TroubleRequest $request, Resident $resident, Property $property): string
+    {
+        $categoryName = $request->category?->display_name ?? '—';
+        $vendorName = $request->vendor?->name ?? '（未指定）';
+        $pref = $request->preferred_date?->format('Y-m-d') ?? '—';
+        $room = trim((string) $resident->room_number);
+        $roomPart = $room !== '' ? "{$room}号室" : '—';
+
+        return "【新規トラブル依頼】\n"
+            ."依頼ID：{$request->id}\n"
+            ."物件：{$property->name} {$roomPart}\n"
+            ."種類：{$categoryName}\n"
+            ."希望日：{$pref}\n"
+            ."業者：{$vendorName}\n\n"
+            .'管理画面から詳細を確認してください。';
+    }
+
+    private function buildVendorDispatchedText(
+        TroubleRequest $request,
+        Resident $resident,
+        Property $property,
+        Vendor $vendor,
+    ): string {
         $categoryName = $request->category?->display_name ?? '—';
         $pref = $request->preferred_date?->format('Y-m-d') ?? '—';
         $room = trim((string) $resident->room_number);
@@ -208,7 +228,7 @@ final class TroubleSubmissionService
         $attachmentCount = $request->requestAttachments()->count();
         $attachLine = $attachmentCount > 0 ? "【添付】{$attachmentCount}件\n" : '';
 
-        $text = "【トラブル依頼・共有グループ向け】\n"
+        return "【修理依頼】\n"
             ."依頼ID：{$request->id}\n"
             ."物件：{$property->name} {$roomPart}\n"
             ."種類：{$categoryName}\n"
@@ -217,16 +237,6 @@ final class TroubleSubmissionService
             .$attachLine
             ."【詳細】\n{$detailBlock}\n\n"
             .'管理画面で依頼の詳細・添付を確認できます。';
-
-        $ok = $this->lineMessaging->pushToTarget($groupId, [['type' => 'text', 'text' => $text]], 'trouble_vendor_cooperation_group');
-        $this->notificationLogWriter->write(
-            'vendor',
-            (int) $vendor->id,
-            'line_message',
-            'trouble_vendor_cooperation_group',
-            $ok ? 'success' : 'failed',
-            (int) $request->id,
-        );
     }
 
     /**

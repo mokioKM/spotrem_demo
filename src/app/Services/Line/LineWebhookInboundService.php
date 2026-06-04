@@ -20,6 +20,7 @@ final class LineWebhookInboundService
 
     public function __construct(
         private readonly LineMessagingService $lineMessaging,
+        private readonly LineInvitationRegistrationFromTextService $invitationRegistrationFromText,
     ) {}
 
     /**
@@ -64,15 +65,35 @@ final class LineWebhookInboundService
             return;
         }
 
+        $text = $message['text'] ?? null;
+        if (! is_string($text)) {
+            return;
+        }
+
+        $source = $event['source'] ?? null;
+        $sourceType = is_array($source) ? ($source['type'] ?? null) : null;
+        $lineUid = is_array($source) && is_string($source['userId'] ?? null) ? $source['userId'] : null;
+
+        $replyText = self::UNSUPPORTED_TEXT_REPLY;
+        $replyEvent = 'webhook_text_unsupported';
+
+        if ($sourceType === 'user' && $lineUid !== null && $lineUid !== '') {
+            $registrationReply = $this->invitationRegistrationFromText->tryRegisterFromText($text, $lineUid);
+            if ($registrationReply !== null) {
+                $replyText = $registrationReply;
+                $replyEvent = 'webhook_invitation_registration';
+            }
+        }
+
         $ok = $this->lineMessaging->reply(
             $replyToken,
-            [['type' => 'text', 'text' => self::UNSUPPORTED_TEXT_REPLY]],
-            'webhook_text_unsupported',
+            [['type' => 'text', 'text' => $replyText]],
+            $replyEvent,
         );
 
         if (! $ok) {
             Log::warning('LINE webhook auto-reply failed', [
-                'event' => 'webhook_text_unsupported',
+                'event' => $replyEvent,
             ]);
         }
     }
