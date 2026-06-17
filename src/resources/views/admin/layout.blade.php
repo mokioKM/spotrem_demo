@@ -114,8 +114,12 @@
         </div>
     </div>
 @else
-    <main class="flex min-h-screen items-center justify-center px-6 py-12 sm:px-8">
-        @include('admin._flash')
+    <main class="relative flex min-h-screen items-center justify-center px-6 py-12 sm:px-8">
+        <div class="pointer-events-none absolute inset-x-0 top-6 z-20 px-6 sm:px-8">
+            <div class="pointer-events-auto mx-auto w-full max-w-xl">
+                @include('admin._flash')
+            </div>
+        </div>
         @yield('content')
     </main>
 @endauth
