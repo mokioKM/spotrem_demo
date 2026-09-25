@@ -175,8 +175,18 @@ final class TroubleSubmissionService
             (int) $request->id,
         );
 
-        $this->notifyLinkedAdminUsers($request, $resident, $property);
-        $this->notifyAssignedVendor($request, $resident, $property);
+        // 片方の本文作成で例外が出ても、もう片方の通知は送る
+        try {
+            $this->notifyLinkedAdminUsers($request, $resident, $property);
+        } catch (\Throwable $e) {
+            Log::error('admin trouble notification failed', ['message' => $e->getMessage()]);
+        }
+
+        try {
+            $this->notifyAssignedVendor($request, $resident, $property);
+        } catch (\Throwable $e) {
+            Log::error('vendor trouble notification failed', ['message' => $e->getMessage()]);
+        }
     }
 
     private function notifyLinkedAdminUsers(TroubleRequest $request, Resident $resident, Property $property): void
@@ -258,6 +268,8 @@ final class TroubleSubmissionService
         $prefBlock = $this->formatPreferredSlotsBlock($request);
         $room = trim((string) $resident->room_number);
         $roomPart = $room !== '' ? "{$room}号室" : '—';
+        $detailUrl = $this->adminDetailUrl($request);
+        $urlLine = $detailUrl !== '' ? "\n\n詳細・添付はこちら：{$detailUrl}" : '';
 
         return $this->fitLineText(
             "【新規トラブル依頼】\n"
@@ -266,8 +278,8 @@ final class TroubleSubmissionService
             ."種類：{$categoryName}\n"
             .$prefBlock
             ."業者：{$vendorName}\n"
-            .$this->formatTroubleDetailBlock($request)."\n\n"
-            .'詳細・添付はこちら：'.$this->adminDetailUrl($request)
+            .$this->formatTroubleDetailBlock($request)
+            .$urlLine
         );
     }
 
@@ -327,9 +339,18 @@ final class TroubleSubmissionService
         return implode("\n", $lines);
     }
 
+    /**
+     * route() はルート未解決で例外になり、その後の業者通知まで止まる。
+     * 通知本文では APP_URL からパスを連結し、未設定ならリンク行を出さない。
+     */
     private function adminDetailUrl(TroubleRequest $request): string
     {
-        return route('admin.trouble-requests.edit', $request);
+        $base = rtrim((string) config('app.url'), '/');
+        if ($base === '') {
+            return '';
+        }
+
+        return $base.'/admin/trouble-requests/'.$request->id.'/edit';
     }
 
     /**
