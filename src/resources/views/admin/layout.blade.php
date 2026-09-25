@@ -23,16 +23,23 @@
             #admin-sidebar {
                 position: relative;
                 transform: none;
+                translate: none;
             }
         }
 
         @media (max-width: 1023px) {
             #admin-sidebar {
                 position: fixed;
+                /* Tailwind の translate ユーティリティと二重にずらさない */
+                translate: none;
             }
 
             #admin-sidebar:not(.translate-x-0) {
                 transform: translateX(-100%);
+            }
+
+            #admin-sidebar.translate-x-0 {
+                transform: translateX(0);
             }
 
             .admin-main-content {
@@ -60,7 +67,7 @@
         <div id="sidebar-backdrop" class="fixed inset-0 z-30 hidden bg-slate-900/50 lg:hidden" aria-hidden="true"></div>
 
         <aside id="admin-sidebar"
-               class="flex min-h-screen w-64 flex-col border-r border-slate-800 bg-slate-900 text-white transition-transform duration-200 ease-in-out max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:-translate-x-full lg:min-h-screen">
+               class="flex min-h-screen w-64 flex-col border-r border-slate-800 bg-slate-900 text-white transition-transform duration-200 ease-in-out max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 lg:min-h-screen">
             <div class="shrink-0 border-b border-slate-700 px-5 py-8">
                 <a href="{{ route('admin.properties.index') }}" class="block text-lg font-semibold tracking-tight text-white hover:text-slate-200">
                     SpotRem 管理
@@ -138,11 +145,10 @@
 
             function setOpen(open) {
                 if (isMobile()) {
-                    sidebar.classList.toggle('-translate-x-full', !open);
                     sidebar.classList.toggle('translate-x-0', open);
                     backdrop.classList.toggle('hidden', !open);
                 } else {
-                    sidebar.classList.remove('-translate-x-full', 'translate-x-0');
+                    sidebar.classList.remove('translate-x-0');
                     backdrop.classList.add('hidden');
                 }
 
