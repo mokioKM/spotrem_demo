@@ -108,7 +108,7 @@ class TroubleAdminDirectNotificationTest extends TestCase
                 return false;
             }
             $text = (string) ($data['messages'][0]['text'] ?? '');
-            if (! str_contains($text, '新規トラブル依頼')) {
+            if (! str_contains($text, '新規トラブル依頼') || ! str_contains($text, 'エアコンが動かない') || ! str_contains($text, '【詳細】')) {
                 return false;
             }
             $adminPushes++;

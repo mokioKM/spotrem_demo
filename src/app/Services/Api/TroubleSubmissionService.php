@@ -101,7 +101,7 @@ final class TroubleSubmissionService
                 ]);
             }
 
-            return $tr->load(['category', 'vendor', 'resident', 'property', 'preferredSlots']);
+            return $tr->load(['category', 'vendor', 'resident', 'property', 'preferredSlots', 'requestAttachments']);
         });
 
         $this->sendNotifications($request, $resident, $property);
@@ -259,13 +259,16 @@ final class TroubleSubmissionService
         $room = trim((string) $resident->room_number);
         $roomPart = $room !== '' ? "{$room}号室" : '—';
 
-        return "【新規トラブル依頼】\n"
+        return $this->fitLineText(
+            "【新規トラブル依頼】\n"
             ."依頼ID：{$request->id}\n"
             ."物件：{$property->name} {$roomPart}\n"
             ."種類：{$categoryName}\n"
             .$prefBlock
-            ."業者：{$vendorName}\n\n"
-            .'管理画面から詳細を確認してください。';
+            ."業者：{$vendorName}\n"
+            .$this->formatTroubleDetailBlock($request)."\n\n"
+            .'詳細・添付はこちら：'.$this->adminDetailUrl($request)
+        );
     }
 
     private function buildVendorDispatchedText(
@@ -279,23 +282,66 @@ final class TroubleSubmissionService
         $room = trim((string) $resident->room_number);
         $roomPart = $room !== '' ? "{$room}号室" : '—';
 
-        $description = trim((string) $request->description);
-        $detailBlock = $description === ''
-            ? '（記載なし）'
-            : mb_strimwidth($description, 0, 1800, '…');
-
-        $attachmentCount = $request->requestAttachments()->count();
-        $attachLine = $attachmentCount > 0 ? "【添付】{$attachmentCount}件\n" : '';
-
-        return "【修理依頼】\n"
+        return $this->fitLineText(
+            "【修理依頼】\n"
             ."依頼ID：{$request->id}\n"
             ."物件：{$property->name} {$roomPart}\n"
             ."種類：{$categoryName}\n"
             .$prefBlock
             ."担当業者：{$vendor->name}\n"
-            .$attachLine
-            ."【詳細】\n{$detailBlock}\n\n"
-            .'管理画面で依頼の詳細・添付を確認できます。';
+            .$this->formatTroubleDetailBlock($request)
+        );
+    }
+
+    /**
+     * 管理画面を開かなくても依頼内容が読めるよう、詳細全文と添付URLを載せる。
+     * description の入力上限は 2000 文字なので、その範囲は省略しない。
+     */
+    private function formatTroubleDetailBlock(TroubleRequest $request): string
+    {
+        $description = trim((string) $request->description);
+        $detail = $description === ''
+            ? '（記載なし）'
+            : mb_substr($description, 0, 2000);
+
+        $attachments = $request->relationLoaded('requestAttachments')
+            ? $request->requestAttachments
+            : $request->requestAttachments()->get();
+
+        $lines = ['【詳細】', $detail];
+
+        if ($attachments->isNotEmpty()) {
+            $lines[] = '';
+            $lines[] = '【添付】'.$attachments->count().'件';
+            foreach ($attachments as $attachment) {
+                $label = match ($attachment->file_type) {
+                    'video' => '動画',
+                    'image' => '画像',
+                    default => (string) $attachment->file_type,
+                };
+                $url = trim((string) $attachment->url);
+                $lines[] = $url !== '' ? "{$label}：{$url}" : $label;
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function adminDetailUrl(TroubleRequest $request): string
+    {
+        return route('admin.trouble-requests.edit', $request);
+    }
+
+    /**
+     * LINE テキストメッセージの上限は 5000 文字。超える場合は末尾を切る。
+     */
+    private function fitLineText(string $text): string
+    {
+        if (mb_strlen($text) <= 5000) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, 4999).'…';
     }
 
     /**
