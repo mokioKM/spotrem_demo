@@ -10,10 +10,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Webhook で受け取ったイベントの処理（テキストは非対応案内、オプション請求の postback は感謝文を返信）
+ * Webhook で受け取ったイベントの処理（招待登録以外のテキストは無応答、オプション請求の postback は感謝文を返信）
  */
 final class LineWebhookInboundService
 {
+    /**
+     * 招待登録に該当しないテキストへの案内文。送信は停止中。
+     * 再開するときは handleOneEvent で $replyText が null のときにこの定数を webhook_text_unsupported として返信する。
+     */
     private const UNSUPPORTED_TEXT_REPLY = "このトークでのテキストメッセージへの返信には対応しておりません。\nお困りの際は、画面下のメニューから「トラブル報告」などをご利用ください。";
 
     private const PAYMENT_THANK_YOU_REPLY = "入金のご連絡ありがとうございます。\n管理会社にて確認いたします。";
@@ -74,8 +78,8 @@ final class LineWebhookInboundService
         $sourceType = is_array($source) ? ($source['type'] ?? null) : null;
         $lineUid = is_array($source) && is_string($source['userId'] ?? null) ? $source['userId'] : null;
 
-        $replyText = self::UNSUPPORTED_TEXT_REPLY;
-        $replyEvent = 'webhook_text_unsupported';
+        $replyText = null;
+        $replyEvent = null;
 
         if ($sourceType === 'user' && $lineUid !== null && $lineUid !== '') {
             $registrationReply = $this->invitationRegistrationFromText->tryRegisterFromText($text, $lineUid);
@@ -83,6 +87,11 @@ final class LineWebhookInboundService
                 $replyText = $registrationReply;
                 $replyEvent = 'webhook_invitation_registration';
             }
+        }
+
+        // 該当しないテキストへの非対応案内（UNSUPPORTED_TEXT_REPLY）は送らない。
+        if ($replyText === null || $replyEvent === null) {
+            return;
         }
 
         $ok = $this->lineMessaging->reply(

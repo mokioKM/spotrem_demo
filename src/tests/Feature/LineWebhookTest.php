@@ -92,19 +92,8 @@ class LineWebhookTest extends TestCase
         $response->assertOk();
         $response->assertExactJson([]);
 
-        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
-            if ($request->url() !== 'https://api.line.me/v2/bot/message/reply') {
-                return false;
-            }
-            $data = $request->data();
-            if (($data['replyToken'] ?? null) !== 'TEST_REPLY_TOKEN') {
-                return false;
-            }
-            $messages = $data['messages'] ?? [];
-            $text = $messages[0]['text'] ?? '';
-
-            return str_contains((string) $text, 'テキストメッセージへの返信には対応しておりません');
-        });
+        // 招待登録に該当しないテキストへの非対応案内は送らない。
+        Http::assertNothingSent();
     }
 
     public function test_does_not_reply_to_non_text_message(): void
