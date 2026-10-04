@@ -62,7 +62,7 @@ final class ResidentRegistrationService
 
     private function sendRegistrationNotification(Resident $resident): void
     {
-        $thankYou = "登録ありがとうございます。\n\nトラブル（お困りごと）がありましたら、下のボタンから内容をお送りください。";
+        $thankYou = "登録ありがとうございます。\n\nお手数ですがこのトーク宛てに「登録済」とメッセージを送信いただけますでしょうか。\n\nトラブル（お困りごと）がありましたら、下のボタンから内容をお送りください。";
         $liffUri = LineTroubleLiffUri::openUri();
         if ($liffUri !== null) {
             $messages = [
